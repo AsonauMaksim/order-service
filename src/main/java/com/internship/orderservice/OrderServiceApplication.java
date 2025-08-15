@@ -2,12 +2,13 @@ package com.internship.orderservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
-public class OrderserviceApplication {
+@EnableFeignClients
+public class OrderServiceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(OrderserviceApplication.class, args);
+		SpringApplication.run(OrderServiceApplication.class, args);
 	}
-
 }
