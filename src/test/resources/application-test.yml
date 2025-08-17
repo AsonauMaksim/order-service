@@ -1,0 +1,29 @@
+server:
+  port: 0
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  liquibase:
+    enabled: true
+
+# Переопределим через @DynamicPropertySource на wireMock.baseUrl()
+external:
+  user-service:
+    url: http://localhost:0
+
+jwt:
+  secret: ${JWT_SECRET:VGhpcy1pcy1qd3QtZGV2LXNlY3JldC13aXRoLWF0LWxlYXN0LTI1Ni1iaXRzIQ==}
+  access-token-expiration-ms: 3600000
+
+logging:
+  level:
+    root: WARN
+    com.internship.orderservice: INFO

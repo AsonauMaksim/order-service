@@ -14,6 +14,7 @@ import com.internship.orderservice.mapper.OrderMapper;
 import com.internship.orderservice.repository.ItemRepository;
 import com.internship.orderservice.repository.OrderRepository;
 import com.internship.orderservice.service.OrderService;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,37 +32,32 @@ public class OrderServiceImpl implements OrderService {
     private final ItemRepository itemRepository;
     private final UserClient userClient;
 
-    private static OrderStatus parseStatus(String s) {
-        try {
-            return OrderStatus.valueOf(s.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid status: " + s);
-        }
-    }
-
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
+
+        UserResponse user = requireUser(request.getUserId());
 
         Order order = orderMapper.toEntity(request);
         order.setStatus(parseStatus(request.getStatus()));
         order.setCreationDate(LocalDateTime.now());
 
-        List<OrderItem> orderItems = request.getItems().stream().map(itemRequest -> {
-            Item item = itemRepository.findById(itemRequest.getItemId())
-                    .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemRequest.getItemId()));
-            return OrderItem.builder()
-                    .item(item)
-                    .quantity(itemRequest.getQuantity())
-                    .order(order)
-                    .build();
-        }).toList();
+        List<OrderItem> orderItems = request.getItems().stream()
+                .map(itemReq -> {
+                    Item item = itemRepository.findById(itemReq.getItemId())
+                            .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemReq.getItemId()));
+                    return OrderItem.builder()
+                            .order(order)
+                            .item(item)
+                            .quantity(itemReq.getQuantity())
+                            .build();
+                })
+                .toList();
 
         order.setOrderItems(orderItems);
-        Order savedOrder = orderRepository.save(order);
 
-        UserResponse user = userClient.getByUserId(savedOrder.getUserId());
-        return orderMapper.toDto(savedOrder, user);
+        Order saved = orderRepository.save(order);
+        return orderMapper.toDto(saved, user);
     }
 
     @Override
@@ -69,53 +65,48 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found with id: " + id));
 
-        UserResponse user = userClient.getByUserId(order.getUserId());
+        UserResponse user = safeGetUser(order.getUserId());
         return orderMapper.toDto(order, user);
     }
 
     @Override
     public List<OrderResponse> getOrdersByIds(List<Long> ids) {
-        List<Order> orders = orderRepository.findByIdIn(ids);
-        return orders.stream().map(order -> {
-            UserResponse user = userClient.getByUserId(order.getUserId());
-            return orderMapper.toDto(order, user);
-        }).toList();
+        return orderRepository.findByIdIn(ids).stream()
+                .map(o -> orderMapper.toDto(o, safeGetUser(o.getUserId())))
+                .toList();
     }
 
     @Override
     public List<OrderResponse> getOrdersByStatuses(List<OrderStatus> statuses) {
-        List<Order> orders = orderRepository.findByStatusIn(statuses);
-        return orders.stream().map(order -> {
-            UserResponse user = userClient.getByUserId(order.getUserId());
-            return orderMapper.toDto(order, user);
-        }).toList();
+        return orderRepository.findByStatusIn(statuses).stream()
+                .map(o -> orderMapper.toDto(o, safeGetUser(o.getUserId())))
+                .toList();
     }
 
     @Override
     @Transactional
     public OrderResponse updateOrder(Long id, OrderRequest request) {
-
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found with id: " + id));
 
-//        order.setStatus(OrderStatus.valueOf(request.getStatus()));
         order.setStatus(parseStatus(request.getStatus()));
 
         order.getOrderItems().clear();
-        List<OrderItem> updatedItems = request.getItems().stream().map(itemRequest -> {
-            Item item = itemRepository.findById(itemRequest.getItemId())
-                    .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemRequest.getItemId()));
-            return OrderItem.builder()
-                    .item(item)
-                    .quantity(itemRequest.getQuantity())
-                    .order(order)
-                    .build();
-        }).toList();
-
+        List<OrderItem> updatedItems = request.getItems().stream()
+                .map(itemReq -> {
+                    Item item = itemRepository.findById(itemReq.getItemId())
+                            .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemReq.getItemId()));
+                    return OrderItem.builder()
+                            .order(order)
+                            .item(item)
+                            .quantity(itemReq.getQuantity())
+                            .build();
+                })
+                .toList();
         order.getOrderItems().addAll(updatedItems);
-        Order saved = orderRepository.save(order);
 
-        UserResponse user = userClient.getByUserId(saved.getUserId());
+        Order saved = orderRepository.save(order);
+        UserResponse user = safeGetUser(saved.getUserId()); // может быть null
         return orderMapper.toDto(saved, user);
     }
 
@@ -126,5 +117,31 @@ public class OrderServiceImpl implements OrderService {
             throw new NotFoundException("Order not found with id: " + id);
         }
         orderRepository.deleteById(id);
+    }
+
+    private static OrderStatus parseStatus(String s) {
+        try {
+            return OrderStatus.valueOf(s.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Invalid status: " + s);
+        }
+    }
+
+    private UserResponse requireUser(Long userId) {
+        try {
+            return userClient.getByUserId(userId);
+        } catch (com.internship.orderservice.exception.NotFoundException e) {
+            throw new com.internship.orderservice.exception.NotFoundException(
+                    "User does not exist: " + userId
+            );
+        }
+    }
+
+    private UserResponse safeGetUser(Long userId) {
+        try {
+            return userClient.getByUserId(userId);
+        } catch (com.internship.orderservice.exception.NotFoundException e) {
+            return null;
+        }
     }
 }
