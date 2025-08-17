@@ -104,7 +104,7 @@ public class OrderServiceImpl implements OrderService {
         order.getOrderItems().addAll(updatedItems);
 
         Order saved = orderRepository.save(order);
-        UserResponse user = safeGetUser(saved.getUserId()); // может быть null
+        UserResponse user = safeGetUser(saved.getUserId());
         return orderMapper.toDto(saved, user);
     }
 
