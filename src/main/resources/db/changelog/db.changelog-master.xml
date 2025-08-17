@@ -6,4 +6,5 @@
     https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.4.xsd">
 
     <include file="db/changelog/create-tables.xml"/>
+    <include file="db/changelog/fill-items-table.xml"/>
 </databaseChangeLog>

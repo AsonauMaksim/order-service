@@ -3,7 +3,7 @@ spring:
     name: order-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/order_db
+    url: jdbc:postgresql://order-postgres:5432/order_db
     username: postgres
     password: 12345
     driver-class-name: org.postgresql.Driver
@@ -32,4 +32,8 @@ server:
 
 external:
   user-service:
-    url: http://localhost:8081
+    url: http://user-service:8081
+
+logging:
+  level:
+    root: DEBUG

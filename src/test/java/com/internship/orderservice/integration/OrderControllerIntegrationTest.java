@@ -2,8 +2,10 @@ package com.internship.orderservice.integration;
 
 import com.internship.orderservice.entity.Item;
 import com.internship.orderservice.repository.ItemRepository;
+import com.internship.orderservice.repository.OrderItemRepository;
 import com.internship.orderservice.repository.OrderRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -38,8 +40,20 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     OrderRepository orderRepository;
 
+    @Autowired
+    OrderItemRepository orderItemRepository;
+
+    @BeforeEach
+    void setUp() {
+        orderItemRepository.deleteAll();
+        orderRepository.deleteAll();
+        itemRepository.deleteAll();
+        WIREMOCK.resetAll();
+    }
+
     @AfterEach
     void tearDown() {
+        orderItemRepository.deleteAll();
         orderRepository.deleteAll();
         itemRepository.deleteAll();
         WIREMOCK.resetAll();

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.4.xsd">
+
+    <changeSet id="insert-test-items-001" author="maksim-asonau">
+        <insert tableName="items">
+            <column name="name" value="USB-C Cable 1m"/>
+            <column name="price" value="9.99"/>
+        </insert>
+        <insert tableName="items">
+            <column name="name" value="Wireless Mouse"/>
+            <column name="price" value="24.90"/>
+        </insert>
+        <insert tableName="items">
+            <column name="name" value="SSD 512GB"/>
+            <column name="price" value="89.90"/>
+        </insert>
+    </changeSet>
+</databaseChangeLog>
