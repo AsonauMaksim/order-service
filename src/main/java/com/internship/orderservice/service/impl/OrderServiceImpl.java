@@ -128,8 +128,8 @@ public class OrderServiceImpl implements OrderService {
     private UserResponse requireUser(Long userId) {
         try {
             return userClient.getByUserId(userId);
-        } catch (com.internship.orderservice.exception.NotFoundException e) {
-            throw new com.internship.orderservice.exception.NotFoundException(
+        } catch (NotFoundException e) {
+            throw new NotFoundException(
                     "User does not exist: " + userId
             );
         }
@@ -138,7 +138,7 @@ public class OrderServiceImpl implements OrderService {
     private UserResponse safeGetUser(Long userId) {
         try {
             return userClient.getByUserId(userId);
-        } catch (com.internship.orderservice.exception.NotFoundException e) {
+        } catch (NotFoundException e) {
             return null;
         }
     }
