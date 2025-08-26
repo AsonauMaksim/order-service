@@ -1,0 +1,35 @@
+### IntelliJ IDEA ###
+*.iml
+.idea/
+out/
+target/
+
+### Eclipse ###
+.classpath
+.project
+.settings/
+.apt_generated/
+.factorypath/
+.springBeans
+.sts4-cache
+bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Java ###
+*.class
+*.log
+*.tmp
+
+.env

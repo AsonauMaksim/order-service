@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:postgresql://order-postgres:5432/order_db
+    username: postgres
+    password: 12345
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  cache:
+    type: redis
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration-ms: 3600000
+
+server:
+  port: 8083
+
+external:
+  user-service:
+    url: http://user-service:8081
+
+logging:
+  level:
+    root: DEBUG
