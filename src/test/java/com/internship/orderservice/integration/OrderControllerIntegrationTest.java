@@ -16,6 +16,8 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
+import java.math.BigDecimal;
+
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -27,7 +29,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.hamcrest.Matchers.containsString;
-
 
 public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
@@ -42,6 +43,8 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     OrderItemRepository orderItemRepository;
+
+    private static final String USER_HEADER = "X-User-Id";
 
     @BeforeEach
     void setUp() {
@@ -61,9 +64,8 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_HappyPath_Returns201AndUserFromWireMock() throws Exception {
-
-        Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new java.math.BigDecimal("9.99")));
-        Item i2 = itemRepository.save(new Item(null, "Wireless Mouse", new java.math.BigDecimal("24.90")));
+        Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new BigDecimal("9.99")));
+        Item i2 = itemRepository.save(new Item(null, "Wireless Mouse", new BigDecimal("24.90")));
 
         long userId = 4L;
 
@@ -79,16 +81,16 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String reqJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 2},
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i1.getId(), i2.getId());
+                """.formatted(i1.getId(), i2.getId());
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isCreated())
@@ -105,8 +107,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_UserNotFound_Returns404() throws Exception {
-
-        Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new java.math.BigDecimal("9.99")));
+        Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new BigDecimal("9.99")));
         long userId = 9999L;
 
         WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
@@ -114,15 +115,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String reqJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i1.getId());
+                """.formatted(i1.getId());
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isNotFound())
@@ -135,7 +136,6 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_ItemNotFound_Returns404() throws Exception {
-
         long userId = 7L;
 
         String userJson = """
@@ -149,15 +149,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String reqJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": 999, "quantity": 1}
                     ]
                   }
-                """.formatted(userId);
+                """;
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isNotFound())
@@ -170,8 +170,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void getOrderById_HappyPath_Returns200AndUser() throws Exception {
-
-        Item i1 = itemRepository.save(new Item(null, "SSD 512GB", new java.math.BigDecimal("89.90")));
+        Item i1 = itemRepository.save(new Item(null, "SSD 512GB", new BigDecimal("89.90")));
         long userId = 11L;
 
         String userJson = """
@@ -185,15 +184,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String createJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i1.getId());
+                """.formatted(i1.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -215,7 +214,6 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void getOrderById_NotFound_Returns404() throws Exception {
-
         mockMvc.perform(get("/api/orders/{id}", 99999))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
@@ -224,8 +222,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void getOrderById_UserService404_UserNullInResponse() throws Exception {
-
-        Item i = itemRepository.save(new Item(null, "HDMI Cable", new java.math.BigDecimal("7.90")));
+        Item i = itemRepository.save(new Item(null, "HDMI Cable", new BigDecimal("7.90")));
         long userId = 44L;
 
         String okUserJson = """
@@ -239,15 +236,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String createJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i.getId());
+                """.formatted(i.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -267,11 +264,9 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.user").doesNotExist());
     }
 
-
     @Test
     void updateOrder_ChangeStatusToPaid_Returns200() throws Exception {
-
-        Item i1 = itemRepository.save(new Item(null, "Keyboard", new java.math.BigDecimal("39.90")));
+        Item i1 = itemRepository.save(new Item(null, "Keyboard", new BigDecimal("39.90")));
         long userId = 22L;
 
         String userJson = """
@@ -285,15 +280,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String createJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 2}
                     ]
                   }
-                """.formatted(userId, i1.getId());
+                """.formatted(i1.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -304,15 +299,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String updateJson = """
                   {
-                    "userId": %d,
                     "status": "PAID",
                     "items": [
                       {"itemId": %d, "quantity": 2}
                     ]
                   }
-                """.formatted(userId, i1.getId());
+                """.formatted(i1.getId());
 
         mockMvc.perform(put("/api/orders/{id}", orderId)
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isOk())
@@ -326,19 +321,18 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void updateOrder_NotFound_Returns404() throws Exception {
-
         long userId = 123L;
         String updateJson = """
                   {
-                    "userId": %d,
                     "status": "PAID",
                     "items": [
                       {"itemId": 1, "quantity": 1}
                     ]
                   }
-                """.formatted(userId);
+                """;
 
         mockMvc.perform(put("/api/orders/{id}", 99999)
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isNotFound())
@@ -348,8 +342,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void deleteOrder_NoContent_ThenGetNotFound() throws Exception {
-
-        Item i = itemRepository.save(new Item(null, "Flash Drive 64GB", new java.math.BigDecimal("12.50")));
+        Item i = itemRepository.save(new Item(null, "Flash Drive 64GB", new BigDecimal("12.50")));
         long userId = 33L;
 
         String userJson = """
@@ -363,15 +356,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String createJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i.getId());
+                """.formatted(i.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -389,7 +382,6 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void deleteOrder_NotFound_Returns404() throws Exception {
-
         mockMvc.perform(delete("/api/orders/{id}", 424242))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
@@ -398,27 +390,28 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_InvalidStatus_Returns400() throws Exception {
-
-        Item i = itemRepository.save(new Item(null, "NVMe 1TB", new java.math.BigDecimal("129.90")));
+        Item i = itemRepository.save(new Item(null, "NVMe 1TB", new BigDecimal("129.90")));
         long userId = 55L;
 
         String userJson = """
                   {"id": %d, "name":"Test", "surname":"User", "email":"t@example.com"}
                 """.formatted(userId);
         WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody(userJson)));
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json").withBody(userJson)));
 
         String badReq = """
                   {
-                    "userId": %d,
                     "status": "WRONG_STATUS",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i.getId());
+                """.formatted(i.getId());
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(badReq))
                 .andExpect(status().isBadRequest())
@@ -428,8 +421,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void updateOrder_ItemNotFound_Returns404() throws Exception {
-
-        Item i = itemRepository.save(new Item(null, "USB Hub", new java.math.BigDecimal("19.90")));
+        Item i = itemRepository.save(new Item(null, "USB Hub", new BigDecimal("19.90")));
         long userId = 66L;
 
         String userJson = """
@@ -443,15 +435,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String createJson = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 1}
                     ]
                   }
-                """.formatted(userId, i.getId());
+                """.formatted(i.getId());
 
         var created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -462,15 +454,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String updateJson = """
                   {
-                    "userId": %d,
                     "status": "PAID",
                     "items": [
                       {"itemId": 999, "quantity": 1}
                     ]
                   }
-                """.formatted(userId);
+                """;
 
         mockMvc.perform(put("/api/orders/{id}", orderId)
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isNotFound())
@@ -480,7 +472,6 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_EmptyItems_Returns400() throws Exception {
-
         long userId = 77L;
 
         String userJson = """
@@ -494,13 +485,13 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String req = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": []
                   }
-                """.formatted(userId);
+                """;
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(req))
                 .andExpect(status().isBadRequest())
@@ -510,8 +501,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_QuantityZero_Returns400() throws Exception {
-
-        Item item = itemRepository.save(new Item(null, "Dummy", new java.math.BigDecimal("1.00")));
+        Item item = itemRepository.save(new Item(null, "Dummy", new BigDecimal("1.00")));
         long userId = 78L;
 
         String userJson = """
@@ -525,15 +515,15 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String req = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [
                       {"itemId": %d, "quantity": 0}
                     ]
                   }
-                """.formatted(userId, item.getId());
+                """.formatted(item.getId());
 
         mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(req))
                 .andExpect(status().isBadRequest())
@@ -543,8 +533,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void updateOrder_MissingUserId_Returns400() throws Exception {
-
-        Item item = itemRepository.save(new Item(null, "X", new java.math.BigDecimal("5.00")));
+        Item item = itemRepository.save(new Item(null, "X", new BigDecimal("5.00")));
         long userId = 79L;
 
         String userJson = """
@@ -558,13 +547,13 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         String create = """
                   {
-                    "userId": %d,
                     "status": "PENDING",
                     "items": [{"itemId": %d, "quantity": 1}]
                   }
-                """.formatted(userId, item.getId());
+                """.formatted(item.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, userId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(create))
                 .andExpect(status().isCreated())
@@ -580,19 +569,21 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
                   }
                 """.formatted(item.getId());
 
+        // Без userId header — теперь 400!
         mockMvc.perform(put("/api/orders/{id}", orderId)
+                        // .header(USER_HEADER, userId) // специально не передаем
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(update))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.message").value("Validation error"));
+                .andExpect(jsonPath("$.message").value("Required request header 'X-User-Id' " +
+                        "for method parameter type Long is not present"));
     }
 
     @Test
     void getOrdersByIds_ReturnsList() throws Exception {
-
-        Item i1 = itemRepository.save(new Item(null, "Cable", new java.math.BigDecimal("5.00")));
-        Item i2 = itemRepository.save(new Item(null, "Mouse", new java.math.BigDecimal("20.00")));
+        Item i1 = itemRepository.save(new Item(null, "Cable", new BigDecimal("5.00")));
+        Item i2 = itemRepository.save(new Item(null, "Mouse", new BigDecimal("20.00")));
 
         long userA = 101L, userB = 102L;
 
@@ -615,18 +606,20 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
                         .withBody(userBJson)));
 
         var resA = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
+                        .header(USER_HEADER, userA)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                  {"userId": %d, "status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
-                                """.formatted(userA, i1.getId())))
+                                  {"status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
+                                """.formatted(i1.getId())))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andReturn();
 
         var resB = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
+                        .header(USER_HEADER, userB)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                  {"userId": %d, "status":"SHIPPED", "items":[{"itemId": %d, "quantity":2}]}
-                                """.formatted(userB, i2.getId())))
+                                  {"status":"SHIPPED", "items":[{"itemId": %d, "quantity":2}]}
+                                """.formatted(i2.getId())))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andReturn();
 
@@ -646,8 +639,7 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void getOrdersByStatuses_ReturnsList() throws Exception {
-
-        Item item = itemRepository.save(new Item(null, "SSD", new java.math.BigDecimal("80.00")));
+        Item item = itemRepository.save(new Item(null, "SSD", new BigDecimal("80.00")));
         long userX = 201L, userY = 202L;
 
         String userXJson = """
@@ -659,25 +651,30 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
         WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userX))
                 .willReturn(WireMock.aResponse()
-                        .withStatus(200).withHeader("Content-Type", "application/json").withBody(userXJson)));
+                        .withStatus(200).withHeader("Content-Type", "application/json")
+                        .withBody(userXJson)));
+
         WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userY))
                 .willReturn(WireMock.aResponse()
-                        .withStatus(200).withHeader("Content-Type", "application/json").withBody(userYJson)));
+                        .withStatus(200).withHeader("Content-Type", "application/json")
+                        .withBody(userYJson)));
 
         var createdPending = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
+                        .header(USER_HEADER, userX)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                  {"userId": %d, "status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
-                                """.formatted(userX, item.getId())))
+                                  {"status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
+                                """.formatted(item.getId())))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andReturn();
 
         var createdPaid = mockMvc.perform(
                         MockMvcRequestBuilders.post("/api/orders")
+                                .header(USER_HEADER, userY)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
-                                          {"userId": %d, "status":"PAID", "items":[{"itemId": %d, "quantity":1}]}
-                                        """.formatted(userY, item.getId())))
+                                          {"status":"PAID", "items":[{"itemId": %d, "quantity":1}]}
+                                        """.formatted(item.getId())))
                 .andExpect(MockMvcResultMatchers.status().isCreated())
                 .andReturn();
 

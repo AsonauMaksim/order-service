@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,7 +34,10 @@ public class OrderController {
     private final OrderService orderService;
 
     @PostMapping
-    public ResponseEntity<OrderResponse> createOrder(@RequestBody @Valid OrderRequest request) {
+    public ResponseEntity<OrderResponse> createOrder(
+            @RequestHeader("X-User-Id") Long userId,
+            @RequestBody @Valid OrderRequest request) {
+        request.setUserId(userId);
         OrderResponse resp = orderService.createOrder(request);
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
@@ -62,8 +66,11 @@ public class OrderController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<OrderResponse> updateOrder(@PathVariable Long id,
-                                                     @RequestBody @Valid OrderRequest request) {
+    public ResponseEntity<OrderResponse> updateOrder(
+            @RequestHeader("X-User-Id") Long userId,
+            @PathVariable Long id,
+            @RequestBody @Valid OrderRequest request) {
+        request.setUserId(userId);
         OrderResponse response = orderService.updateOrder(id, request);
         return ResponseEntity.ok(response);
     }

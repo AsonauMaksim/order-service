@@ -18,9 +18,9 @@ public class FeignClientConfig {
         return template -> {
             var attrs = RequestContextHolder.getRequestAttributes();
             if (attrs instanceof ServletRequestAttributes sra) {
-                String auth = sra.getRequest().getHeader("Authorization");
-                if (auth != null && !auth.isBlank()) {
-                    template.header("Authorization", auth);
+                String userId = sra.getRequest().getHeader("X-User-Id");
+                if (userId != null && !userId.isBlank()) {
+                    template.header("X-User-Id", userId);
                 }
             }
         };

@@ -26,8 +26,6 @@ services:
     container_name: order-service
     ports:
       - "8083:8083"
-    environment:
-      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       postgres:
         condition: service_healthy

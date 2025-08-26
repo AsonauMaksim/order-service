@@ -10,10 +10,6 @@ import java.util.List;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
-//    List<Order> findByIdIn(List<Long> ids);
-
-//    List<Order> findByStatusIn(List<OrderStatus> statuses);
-
     @Query("""
         select distinct o from Order o
         left join fetch o.orderItems oi
