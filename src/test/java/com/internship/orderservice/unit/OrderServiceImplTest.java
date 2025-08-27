@@ -261,7 +261,7 @@ class OrderServiceImplTest {
         List<OrderResponse> out = service.getOrdersByIds(ids);
 
         assertThat(out).hasSize(1);
-        assertThat(out.get(0).getUser()).isNull();
+        assertThat(out.getFirst().getUser()).isNull();
         verify(orderMapper).toDto(o, null);
     }
 
@@ -317,7 +317,7 @@ class OrderServiceImplTest {
         List<OrderResponse> out = service.getOrdersByStatuses(statuses);
 
         assertThat(out).hasSize(1);
-        assertThat(out.get(0).getUser()).isNull();
+        assertThat(out.getFirst().getUser()).isNull();
         verify(orderMapper).toDto(o, null);
     }
 
@@ -373,8 +373,8 @@ class OrderServiceImplTest {
 
         assertThat(saved.getStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(saved.getOrderItems()).hasSize(1);
-        assertThat(saved.getOrderItems().get(0).getItem().getId()).isEqualTo(2L);
-        assertThat(saved.getOrderItems().get(0).getQuantity()).isEqualTo(3);
+        assertThat(saved.getOrderItems().getFirst().getItem().getId()).isEqualTo(2L);
+        assertThat(saved.getOrderItems().getFirst().getQuantity()).isEqualTo(3);
     }
 
     @Test
