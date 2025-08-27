@@ -21,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -32,11 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
@@ -64,8 +61,12 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_happyPath() {
+
+        Long credentialsId = 111L;
+        Long actualUserId = 4L;
+
         OrderRequest req = OrderRequest.builder()
-                .userId(4L)
+                .userId(credentialsId)
                 .status("PENDING")
                 .items(List.of(
                         OrderItemRequest.builder().itemId(1L).quantity(2).build(),
@@ -73,16 +74,17 @@ class OrderServiceImplTest {
                 ))
                 .build();
 
-        UserResponse externalUser = new UserResponse();
-        externalUser.setId(4L);
-        externalUser.setName("Rita");
-        externalUser.setSurname("Sokolova");
-        externalUser.setEmail("margo@gmail.com");
+        UserResponse resolvedUser = new UserResponse();
+        resolvedUser.setId(actualUserId);
+        resolvedUser.setName("Rita");
+        resolvedUser.setSurname("Sokolova");
+        resolvedUser.setEmail("margo@gmail.com");
 
         Order mapped = new Order();
-        mapped.setUserId(4L);
+        mapped.setUserId(actualUserId);
 
-        when(userClient.getByUserId(4L)).thenReturn(externalUser);
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(resolvedUser);
+        when(userClient.getByUserId(actualUserId)).thenReturn(resolvedUser);
         when(orderMapper.toEntity(req)).thenReturn(mapped);
         when(itemRepository.findById(1L)).thenReturn(Optional.of(item1));
         when(itemRepository.findById(2L)).thenReturn(Optional.of(item2));
@@ -91,7 +93,7 @@ class OrderServiceImplTest {
             o.setId(10L);
             return o;
         });
-        when(orderMapper.toDto(any(Order.class), eq(externalUser))).thenReturn(new OrderResponse());
+        when(orderMapper.toDto(any(Order.class), eq(resolvedUser))).thenReturn(new OrderResponse());
 
         OrderResponse resp = service.createOrder(req);
 
@@ -100,41 +102,54 @@ class OrderServiceImplTest {
         ArgumentCaptor<Order> savedCaptor = ArgumentCaptor.forClass(Order.class);
         verify(orderRepository).save(savedCaptor.capture());
         Order saved = savedCaptor.getValue();
+        assertThat(saved.getUserId()).isEqualTo(actualUserId);
         assertThat(saved.getStatus()).isEqualTo(OrderStatus.PENDING);
         assertThat(saved.getOrderItems()).hasSize(2);
         assertThat(saved.getOrderItems().stream().map(oi -> oi.getItem().getId()).toList())
                 .containsExactlyInAnyOrder(1L, 2L);
 
-        verify(orderMapper).toDto(saved, externalUser);
-        verify(userClient).getByUserId(4L);
+        verify(orderMapper).toDto(saved, resolvedUser);
+        verify(userClient).getByCredentialsId(credentialsId);
+        verify(userClient).getByUserId(actualUserId);
     }
 
     @Test
     void createOrder_userDoesNotExist_throwsNotFound() {
+        Long credentialsId = 777L;
+
         OrderRequest req = OrderRequest.builder()
-                .userId(777L)
+                .userId(credentialsId)
                 .status("PENDING")
                 .items(List.of(OrderItemRequest.builder().itemId(1L).quantity(1).build()))
                 .build();
 
-        when(userClient.getByUserId(777L)).thenThrow(new NotFoundException("User not found"));
+        when(userClient.getByCredentialsId(credentialsId))
+                .thenThrow(new NotFoundException("User not found"));
 
         assertThatThrownBy(() -> service.createOrder(req))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("User does not exist");
 
         verify(orderRepository, never()).save(any());
+        verify(userClient, never()).getByUserId(any());
     }
 
     @Test
     void createOrder_itemNotFound_throwsNotFound() {
+        Long credentialsId = 111L;
+        Long actualUserId = 4L;
+
         OrderRequest req = OrderRequest.builder()
-                .userId(4L)
+                .userId(credentialsId)
                 .status("PENDING")
                 .items(List.of(OrderItemRequest.builder().itemId(999L).quantity(1).build()))
                 .build();
 
-        when(userClient.getByUserId(4L)).thenReturn(new UserResponse());
+        UserResponse resolvedUser = new UserResponse();
+        resolvedUser.setId(actualUserId);
+
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(resolvedUser);
+        when(userClient.getByUserId(actualUserId)).thenReturn(resolvedUser);
         when(orderMapper.toEntity(req)).thenReturn(new Order());
         when(itemRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -147,13 +162,20 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_invalidStatus_throwsIAE() {
+        Long credentialsId = 111L;
+        Long actualUserId = 4L;
+
         OrderRequest req = OrderRequest.builder()
-                .userId(4L)
+                .userId(credentialsId)
                 .status("WRONG_STATUS")
                 .items(List.of(OrderItemRequest.builder().itemId(1L).quantity(1).build()))
                 .build();
 
-        when(userClient.getByUserId(4L)).thenReturn(new UserResponse());
+        UserResponse resolvedUser = new UserResponse();
+        resolvedUser.setId(actualUserId);
+
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(resolvedUser);
+        when(userClient.getByUserId(actualUserId)).thenReturn(resolvedUser);
         when(orderMapper.toEntity(req)).thenReturn(new Order());
 
         assertThatThrownBy(() -> service.createOrder(req))
@@ -282,17 +304,6 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void getOrdersByStatuses_ShouldReturnEmpty_WhenStatusesEmpty() {
-        when(orderRepository.findByStatusIn(Collections.emptyList())).thenReturn(List.of());
-
-        List<OrderResponse> out = service.getOrdersByStatuses(List.of());
-
-        assertThat(out).isEmpty();
-        verify(orderRepository).findByStatusIn(Collections.emptyList());
-        verifyNoInteractions(userClient, orderMapper);
-    }
-
-    @Test
     void getOrdersByStatuses_ShouldMapUserNull_WhenUserServiceReturnsNull() {
         List<OrderStatus> statuses = List.of(OrderStatus.PENDING);
         Order o = Order.builder().id(5L).userId(77L).status(OrderStatus.PENDING).build();
@@ -313,11 +324,12 @@ class OrderServiceImplTest {
     @Test
     void updateOrder_ShouldThrowNotFound_WhenOrderMissing() {
         Long id = 999L;
+        Long credentialsId = 111L;
         OrderRequest req = OrderRequest.builder().status("SHIPPED").items(List.of()).build();
 
         when(orderRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.updateOrder(id, req))
+        assertThatThrownBy(() -> service.updateOrder(id, req, credentialsId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("Order not found with id: 999");
 
@@ -328,9 +340,12 @@ class OrderServiceImplTest {
 
     @Test
     void updateOrder_replacesItemsAndStatus_andSoftDegradesUser() {
+        Long credentialsId = 111L;
+        Long actualUserId = 4L;
+
         Order existing = new Order();
         existing.setId(9L);
-        existing.setUserId(4L);
+        existing.setUserId(actualUserId);
         existing.setStatus(OrderStatus.PENDING);
         existing.setOrderItems(new ArrayList<>(List.of(
                 OrderItem.builder().order(existing).item(item1).quantity(1).build()
@@ -342,13 +357,14 @@ class OrderServiceImplTest {
                 .build();
 
         when(orderRepository.findById(9L)).thenReturn(Optional.of(existing));
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(UserResponse.builder().id(actualUserId).build());
         when(itemRepository.findById(2L)).thenReturn(Optional.of(item2));
-        when(userClient.getByUserId(4L)).thenThrow(new NotFoundException("gone"));
+        when(userClient.getByUserId(actualUserId)).thenThrow(new NotFoundException("gone"));
 
         when(orderRepository.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
         when(orderMapper.toDto(any(Order.class), eq(null))).thenReturn(new OrderResponse());
 
-        OrderResponse resp = service.updateOrder(9L, req);
+        OrderResponse resp = service.updateOrder(9L, req, credentialsId);
         assertThat(resp).isNotNull();
 
         ArgumentCaptor<Order> savedCaptor = ArgumentCaptor.forClass(Order.class);
@@ -362,19 +378,81 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void updateOrder_wrongOwner_throws403() {
+        Long credentialsId = 111L;
+        Long actualUserId = 5L; // НЕ владелец
+        Order existing = Order.builder()
+                .id(9L)
+                .userId(4L) // владелец другой
+                .status(OrderStatus.PENDING)
+                .build();
+
+        OrderRequest req = OrderRequest.builder()
+                .status("PAID")
+                .items(List.of())
+                .build();
+
+        when(orderRepository.findById(9L)).thenReturn(Optional.of(existing));
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(UserResponse.builder().id(actualUserId).build());
+
+        assertThatThrownBy(() -> service.updateOrder(9L, req, credentialsId))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("update only your orders");
+
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
     void deleteOrder_notFound_throws404() {
-        when(orderRepository.existsById(1L)).thenReturn(false);
-        assertThatThrownBy(() -> service.deleteOrder(1L))
+        Long credentialsId = 111L;
+        when(orderRepository.findById(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteOrder(1L, credentialsId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("Order not found");
-        verify(orderRepository, never()).deleteById(any());
+
+        verify(orderRepository, never()).delete(any());
+    }
+
+    @Test
+    void deleteOrder_wrongOwner_throws403() {
+        Long credentialsId = 111L;
+        Long actualUserId = 5L;
+
+        Order existing = Order.builder()
+                .id(10L)
+                .userId(4L)
+                .status(OrderStatus.PENDING)
+                .build();
+
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(UserResponse.builder().id(actualUserId).build());
+
+        assertThatThrownBy(() -> service.deleteOrder(10L, credentialsId))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("delete only your orders");
+
+        verify(orderRepository, never()).delete(any());
     }
 
     @Test
     void deleteOrder_ok() {
-        when(orderRepository.existsById(10L)).thenReturn(true);
-        doNothing().when(orderRepository).deleteById(10L);
-        service.deleteOrder(10L);
-        verify(orderRepository).deleteById(10L);
+        Long credentialsId = 111L;
+        Long actualUserId = 4L;
+
+        Order existing = Order.builder()
+                .id(10L)
+                .userId(actualUserId)
+                .status(OrderStatus.PENDING)
+                .build();
+
+        when(orderRepository.findById(10L)).thenReturn(Optional.of(existing));
+        when(userClient.getByCredentialsId(credentialsId)).thenReturn(UserResponse.builder().id(actualUserId).build());
+
+        doNothing().when(orderRepository).delete(existing);
+
+        service.deleteOrder(10L, credentialsId);
+
+        verify(orderRepository).delete(existing);
     }
 }

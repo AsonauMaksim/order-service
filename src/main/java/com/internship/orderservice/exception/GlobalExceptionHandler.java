@@ -85,8 +85,11 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MissingRequestHeaderException.class)
-    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex, HttpServletRequest req) {
-        return ResponseEntity.badRequest()
-                .body(build(HttpStatus.BAD_REQUEST, ex.getMessage(), req.getRequestURI()));
+    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex,
+                                                        HttpServletRequest req) {
+        boolean isAuthHeader = "X-User-Id".equalsIgnoreCase(ex.getHeaderName());
+        HttpStatus status = isAuthHeader ? HttpStatus.UNAUTHORIZED : HttpStatus.BAD_REQUEST;
+        String msg = "Missing required header: " + ex.getHeaderName();
+        return ResponseEntity.status(status).body(build(status, msg, req.getRequestURI()));
     }
 }

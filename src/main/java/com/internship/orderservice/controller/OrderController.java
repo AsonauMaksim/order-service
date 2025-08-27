@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
@@ -35,15 +36,18 @@ public class OrderController {
 
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
-            @RequestHeader("X-User-Id") Long userId,
+            @RequestHeader("X-User-Id") Long credentialsId,
             @RequestBody @Valid OrderRequest request) {
-        request.setUserId(userId);
+
+        request.setUserId(credentialsId);
         OrderResponse resp = orderService.createOrder(request);
+
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
                 .path("/{id}")
                 .buildAndExpand(resp.getId())
                 .toUri();
+
         return ResponseEntity.created(location).body(resp);
     }
 
@@ -67,17 +71,20 @@ public class OrderController {
 
     @PutMapping("/{id}")
     public ResponseEntity<OrderResponse> updateOrder(
-            @RequestHeader("X-User-Id") Long userId,
+            @RequestHeader("X-User-Id") Long credentialsId,
             @PathVariable Long id,
             @RequestBody @Valid OrderRequest request) {
-        request.setUserId(userId);
-        OrderResponse response = orderService.updateOrder(id, request);
+
+        OrderResponse response = orderService.updateOrder(id, request, credentialsId);
         return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
-        orderService.deleteOrder(id);
-        return ResponseEntity.noContent().build();
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteOrder(
+            @RequestHeader("X-User-Id") Long credentialsId,
+            @PathVariable Long id
+    ) {
+        orderService.deleteOrder(id, credentialsId);
     }
 }

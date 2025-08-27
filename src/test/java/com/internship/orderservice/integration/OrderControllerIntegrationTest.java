@@ -13,14 +13,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import com.jayway.jsonpath.JsonPath;
 import com.github.tomakehurst.wiremock.client.WireMock;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 import java.math.BigDecimal;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -62,143 +61,154 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         WIREMOCK.resetAll();
     }
 
+    private void stubUserMappingAndDetails(long credentialsId, long actualUserId, String userJson) {
+        // credentialsId -> user.id
+        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/by-credentials-id/" + credentialsId))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(userJson)));
+        // детали пользователя по реальному user.id
+        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + actualUserId))
+                .willReturn(aResponse().withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(userJson)));
+    }
+
+    private void stubUserMappingNotFound(long credentialsId) {
+        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/by-credentials-id/" + credentialsId))
+                .willReturn(aResponse().withStatus(404)));
+    }
+
     @Test
     void createOrder_HappyPath_Returns201AndUserFromWireMock() throws Exception {
         Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new BigDecimal("9.99")));
         Item i2 = itemRepository.save(new Item(null, "Wireless Mouse", new BigDecimal("24.90")));
 
-        long userId = 4L;
+        long credentialsId = 4L; // используем один и тот же id для простоты
+        long actualUserId  = 4L;
 
         String userJson = """
-                  {"id": %d, "name":"Rita", "surname":"Sokolova", "email":"margo@gmail.com"}
-                """.formatted(userId);
+              {"id": %d, "name":"Rita", "surname":"Sokolova", "email":"margo@gmail.com"}
+            """.formatted(actualUserId);
 
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String reqJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 2},
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i1.getId(), i2.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 2},
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i1.getId(), i2.getId());
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isCreated())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").isNumber())
-                .andExpect(jsonPath("$.userId").value((int) userId))
+                .andExpect(jsonPath("$.userId").value((int) actualUserId))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.items.length()").value(2))
-                .andExpect(jsonPath("$.user.id").value((int) userId))
+                .andExpect(jsonPath("$.user.id").value((int) actualUserId))
                 .andExpect(jsonPath("$.user.email").value("margo@gmail.com"));
 
-        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/" + userId)));
+        // verify mapping called
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/" + actualUserId)));
     }
 
     @Test
     void createOrder_UserNotFound_Returns404() throws Exception {
         Item i1 = itemRepository.save(new Item(null, "USB-C Cable 1m", new BigDecimal("9.99")));
-        long userId = 9999L;
+        long credentialsId = 9999L;
 
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse().withStatus(404)));
+        stubUserMappingNotFound(credentialsId);
 
         String reqJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i1.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i1.getId());
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.message")
-                        .value(org.hamcrest.Matchers.containsString("User does not exist")));
+                        .value(containsString("User does not exist")));
 
-        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/" + userId)));
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
+        // деталей пользователя по id не должно быть
+        WIREMOCK.verify(0, getRequestedFor(urlMatching("/api/users/\\d+")));
     }
 
     @Test
     void createOrder_ItemNotFound_Returns404() throws Exception {
-        long userId = 7L;
+        long credentialsId = 7L, actualUserId = 7L;
 
         String userJson = """
-                  {"id": %d, "name":"Test", "surname":"User", "email":"test@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"Test", "surname":"User", "email":"test@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String reqJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": 999, "quantity": 1}
-                    ]
-                  }
-                """;
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": 999, "quantity": 1}
+                ]
+              }
+            """;
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reqJson))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.message")
-                        .value(org.hamcrest.Matchers.containsString("Item not found")));
+                .andExpect(jsonPath("$.message").value(containsString("Item not found")));
 
-        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/" + userId)));
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/" + actualUserId)));
     }
 
     @Test
     void getOrderById_HappyPath_Returns200AndUser() throws Exception {
         Item i1 = itemRepository.save(new Item(null, "SSD 512GB", new BigDecimal("89.90")));
-        long userId = 11L;
+        long credentialsId = 11L, actualUserId = 11L;
 
         String userJson = """
-                  {"id": %d, "name":"Alex", "surname":"Doe", "email":"alex@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"Alex", "surname":"Doe", "email":"alex@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String createJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i1.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i1.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
                 .andReturn();
 
         String body = created.getResponse().getContentAsString();
+
         Number idNum = JsonPath.read(body, "$.id");
         long orderId = idNum.longValue();
 
@@ -206,10 +216,12 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.id").value((int) orderId))
-                .andExpect(jsonPath("$.userId").value((int) userId))
+                .andExpect(jsonPath("$.userId").value((int) actualUserId))
                 .andExpect(jsonPath("$.user.email").value("alex@example.com"));
 
-        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/" + userId)));
+        // mapping (1x при создании) + детали (1x при создании + 1x при GET)
+        WIREMOCK.verify(1, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
+        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/" + actualUserId)));
     }
 
     @Test
@@ -223,28 +235,26 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void getOrderById_UserService404_UserNullInResponse() throws Exception {
         Item i = itemRepository.save(new Item(null, "HDMI Cable", new BigDecimal("7.90")));
-        long userId = 44L;
+        long credentialsId = 44L, actualUserId = 44L;
 
         String okUserJson = """
-                  {"id": %d, "name":"Test", "surname":"User", "email":"ok@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(okUserJson)));
+              {"id": %d, "name":"Test", "surname":"User", "email":"ok@example.com"}
+            """.formatted(actualUserId);
+
+        // создание: ok для mapping и деталей
+        stubUserMappingAndDetails(credentialsId, actualUserId, okUserJson);
 
         String createJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -253,8 +263,8 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         Number idNum = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
         long orderId = idNum.longValue();
 
-        WIREMOCK.resetAll();
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
+        // при GET пользователь уже 404
+        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + actualUserId))
                 .willReturn(aResponse().withStatus(404)));
 
         mockMvc.perform(get("/api/orders/{id}", orderId))
@@ -267,28 +277,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void updateOrder_ChangeStatusToPaid_Returns200() throws Exception {
         Item i1 = itemRepository.save(new Item(null, "Keyboard", new BigDecimal("39.90")));
-        long userId = 22L;
+        long credentialsId = 22L, actualUserId = 22L;
 
         String userJson = """
-                  {"id": %d, "name":"Kate", "surname":"White", "email":"kate@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"Kate", "surname":"White", "email":"kate@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String createJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 2}
-                    ]
-                  }
-                """.formatted(i1.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 2}
+                ]
+              }
+            """.formatted(i1.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -298,16 +304,16 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         long orderId = idNum.longValue();
 
         String updateJson = """
-                  {
-                    "status": "PAID",
-                    "items": [
-                      {"itemId": %d, "quantity": 2}
-                    ]
-                  }
-                """.formatted(i1.getId());
+              {
+                "status": "PAID",
+                "items": [
+                  {"itemId": %d, "quantity": 2}
+                ]
+              }
+            """.formatted(i1.getId());
 
         mockMvc.perform(put("/api/orders/{id}", orderId)
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isOk())
@@ -316,23 +322,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.status").value("PAID"))
                 .andExpect(jsonPath("$.user.email").value("kate@example.com"));
 
-        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/" + userId)));
+        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
+        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/" + actualUserId)));
     }
 
     @Test
     void updateOrder_NotFound_Returns404() throws Exception {
-        long userId = 123L;
+        long credentialsId = 123L;
         String updateJson = """
-                  {
-                    "status": "PAID",
-                    "items": [
-                      {"itemId": 1, "quantity": 1}
-                    ]
-                  }
-                """;
+              {
+                "status": "PAID",
+                "items": [
+                  {"itemId": 1, "quantity": 1}
+                ]
+              }
+            """;
 
         mockMvc.perform(put("/api/orders/{id}", 99999)
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isNotFound())
@@ -343,28 +350,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void deleteOrder_NoContent_ThenGetNotFound() throws Exception {
         Item i = itemRepository.save(new Item(null, "Flash Drive 64GB", new BigDecimal("12.50")));
-        long userId = 33L;
+        long credentialsId = 33L, actualUserId = 33L;
 
         String userJson = """
-                  {"id": %d, "name":"Nick", "surname":"Ray", "email":"nick@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"Nick", "surname":"Ray", "email":"nick@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String createJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -373,16 +376,21 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         Number idNum = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
         long orderId = idNum.longValue();
 
-        mockMvc.perform(delete("/api/orders/{id}", orderId))
+        mockMvc.perform(delete("/api/orders/{id}", orderId)
+                        .header(USER_HEADER, credentialsId))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/orders/{id}", orderId))
                 .andExpect(status().isNotFound());
+
+        WIREMOCK.verify(2, getRequestedFor(urlEqualTo("/api/users/by-credentials-id/" + credentialsId)));
     }
 
     @Test
     void deleteOrder_NotFound_Returns404() throws Exception {
-        mockMvc.perform(delete("/api/orders/{id}", 424242))
+        long credentialsId = 999L;
+        mockMvc.perform(delete("/api/orders/{id}", 424242)
+                        .header(USER_HEADER, credentialsId))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.message", containsString("Order not found")));
@@ -391,27 +399,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void createOrder_InvalidStatus_Returns400() throws Exception {
         Item i = itemRepository.save(new Item(null, "NVMe 1TB", new BigDecimal("129.90")));
-        long userId = 55L;
+        long credentialsId = 55L, actualUserId = 55L;
 
         String userJson = """
-                  {"id": %d, "name":"Test", "surname":"User", "email":"t@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json").withBody(userJson)));
+              {"id": %d, "name":"Test", "surname":"User", "email":"t@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String badReq = """
-                  {
-                    "status": "WRONG_STATUS",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i.getId());
+              {
+                "status": "WRONG_STATUS",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i.getId());
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(badReq))
                 .andExpect(status().isBadRequest())
@@ -422,28 +427,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void updateOrder_ItemNotFound_Returns404() throws Exception {
         Item i = itemRepository.save(new Item(null, "USB Hub", new BigDecimal("19.90")));
-        long userId = 66L;
+        long credentialsId = 66L, actualUserId = 66L;
 
         String userJson = """
-                  {"id": %d, "name":"Lena", "surname":"Fox", "email":"lena@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"Lena", "surname":"Fox", "email":"lena@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String createJson = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 1}
-                    ]
-                  }
-                """.formatted(i.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 1}
+                ]
+              }
+            """.formatted(i.getId());
 
         var created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson))
                 .andExpect(status().isCreated())
@@ -453,16 +454,16 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         long orderId = idNum.longValue();
 
         String updateJson = """
-                  {
-                    "status": "PAID",
-                    "items": [
-                      {"itemId": 999, "quantity": 1}
-                    ]
-                  }
-                """;
+              {
+                "status": "PAID",
+                "items": [
+                  {"itemId": 999, "quantity": 1}
+                ]
+              }
+            """;
 
         mockMvc.perform(put("/api/orders/{id}", orderId)
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateJson))
                 .andExpect(status().isNotFound())
@@ -472,26 +473,22 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     void createOrder_EmptyItems_Returns400() throws Exception {
-        long userId = 77L;
+        long credentialsId = 77L, actualUserId = 77L;
 
         String userJson = """
-                  {"id": %d, "name":"User", "surname":"X", "email":"u@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"User", "surname":"X", "email":"u@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String req = """
-                  {
-                    "status": "PENDING",
-                    "items": []
-                  }
-                """;
+              {
+                "status": "PENDING",
+                "items": []
+              }
+            """;
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(req))
                 .andExpect(status().isBadRequest())
@@ -502,28 +499,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     void createOrder_QuantityZero_Returns400() throws Exception {
         Item item = itemRepository.save(new Item(null, "Dummy", new BigDecimal("1.00")));
-        long userId = 78L;
+        long credentialsId = 78L, actualUserId = 78L;
 
         String userJson = """
-                  {"id": %d, "name":"User", "surname":"Y", "email":"y@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"User", "surname":"Y", "email":"y@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String req = """
-                  {
-                    "status": "PENDING",
-                    "items": [
-                      {"itemId": %d, "quantity": 0}
-                    ]
-                  }
-                """.formatted(item.getId());
+              {
+                "status": "PENDING",
+                "items": [
+                  {"itemId": %d, "quantity": 0}
+                ]
+              }
+            """.formatted(item.getId());
 
         mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(req))
                 .andExpect(status().isBadRequest())
@@ -532,28 +525,24 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    void updateOrder_MissingUserId_Returns400() throws Exception {
+    void updateOrder_MissingUserId_Returns401() throws Exception {
         Item item = itemRepository.save(new Item(null, "X", new BigDecimal("5.00")));
-        long userId = 79L;
+        long credentialsId = 79L, actualUserId = 79L;
 
         String userJson = """
-                  {"id": %d, "name":"User", "surname":"Z", "email":"z@example.com"}
-                """.formatted(userId);
-        WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + userId))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userJson)));
+              {"id": %d, "name":"User", "surname":"Z", "email":"z@example.com"}
+            """.formatted(actualUserId);
+        stubUserMappingAndDetails(credentialsId, actualUserId, userJson);
 
         String create = """
-                  {
-                    "status": "PENDING",
-                    "items": [{"itemId": %d, "quantity": 1}]
-                  }
-                """.formatted(item.getId());
+              {
+                "status": "PENDING",
+                "items": [{"itemId": %d, "quantity": 1}]
+              }
+            """.formatted(item.getId());
 
         MvcResult created = mockMvc.perform(post("/api/orders")
-                        .header(USER_HEADER, userId)
+                        .header(USER_HEADER, credentialsId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(create))
                 .andExpect(status().isCreated())
@@ -563,21 +552,19 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         long orderId = idNum.longValue();
 
         String update = """
-                  {
-                    "status": "PAID",
-                    "items": [{"itemId": %d, "quantity": 1}]
-                  }
-                """.formatted(item.getId());
+              {
+                "status": "PAID",
+                "items": [{"itemId": %d, "quantity": 1}]
+              }
+            """.formatted(item.getId());
 
-        // Без userId header — теперь 400!
         mockMvc.perform(put("/api/orders/{id}", orderId)
-                        // .header(USER_HEADER, userId) // специально не передаем
+                        // .header(USER_HEADER, credentialsId) // специально не передаем
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(update))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isUnauthorized())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.message").value("Required request header 'X-User-Id' " +
-                        "for method parameter type Long is not present"));
+                .andExpect(jsonPath("$.message").value("Missing required header: X-User-Id"));
     }
 
     @Test
@@ -585,108 +572,96 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         Item i1 = itemRepository.save(new Item(null, "Cable", new BigDecimal("5.00")));
         Item i2 = itemRepository.save(new Item(null, "Mouse", new BigDecimal("20.00")));
 
-        long userA = 101L, userB = 102L;
+        long credA = 101L, userA = 101L;
+        long credB = 102L, userB = 102L;
 
         String userAJson = """
-                  {"id": %d, "name":"A", "surname":"A", "email":"a@example.com"}
-                """.formatted(userA);
+              {"id": %d, "name":"A", "surname":"A", "email":"a@example.com"}
+            """.formatted(userA);
         String userBJson = """
-                  {"id": %d, "name":"B", "surname":"B", "email":"b@example.com"}
-                """.formatted(userB);
+              {"id": %d, "name":"B", "surname":"B", "email":"b@example.com"}
+            """.formatted(userB);
 
-        WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userA))
-                .willReturn(WireMock.aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userAJson)));
-        WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userB))
-                .willReturn(WireMock.aResponse()
-                        .withStatus(200)
-                        .withHeader("Content-Type", "application/json")
-                        .withBody(userBJson)));
+        stubUserMappingAndDetails(credA, userA, userAJson);
+        stubUserMappingAndDetails(credB, userB, userBJson);
 
-        var resA = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
-                        .header(USER_HEADER, userA)
+        var resA = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, credA)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                   {"status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
                                 """.formatted(i1.getId())))
-                .andExpect(MockMvcResultMatchers.status().isCreated())
+                .andExpect(status().isCreated())
                 .andReturn();
 
-        var resB = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
-                        .header(USER_HEADER, userB)
+        var resB = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, credB)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                   {"status":"SHIPPED", "items":[{"itemId": %d, "quantity":2}]}
                                 """.formatted(i2.getId())))
-                .andExpect(MockMvcResultMatchers.status().isCreated())
+                .andExpect(status().isCreated())
                 .andReturn();
 
-        Number nA = JsonPath.read(resA.getResponse().getContentAsString(), "$.id");
-        Number nB = JsonPath.read(resB.getResponse().getContentAsString(), "$.id");
-        long idA = nA.longValue();
-        long idB = nB.longValue();
+        Number idNumA = JsonPath.read(resA.getResponse().getContentAsString(), "$.id");
+        long idA = idNumA.longValue();
 
-        mockMvc.perform(MockMvcRequestBuilders.get("/api/orders/by-ids")
+        Number idNumB = JsonPath.read(resB.getResponse().getContentAsString(), "$.id");
+        long idB = idNumB.longValue();
+
+
+        mockMvc.perform(get("/api/orders/by-ids")
                         .param("ids", String.valueOf(idA), String.valueOf(idB)))
-                .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.length()").value(2))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[*].id",
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].id",
                         org.hamcrest.Matchers.containsInAnyOrder((int) idA, (int) idB)));
     }
 
     @Test
     void getOrdersByStatuses_ReturnsList() throws Exception {
         Item item = itemRepository.save(new Item(null, "SSD", new BigDecimal("80.00")));
-        long userX = 201L, userY = 202L;
+        long credX = 201L, userX = 201L;
+        long credY = 202L, userY = 202L;
 
         String userXJson = """
-                  {"id": %d, "name":"X", "surname":"X", "email":"x@example.com"}
-                """.formatted(userX);
+              {"id": %d, "name":"X", "surname":"X", "email":"x@example.com"}
+            """.formatted(userX);
         String userYJson = """
-                  {"id": %d, "name":"Y", "surname":"Y", "email":"y@example.com"}
-                """.formatted(userY);
+              {"id": %d, "name":"Y", "surname":"Y", "email":"y@example.com"}
+            """.formatted(userY);
 
-        WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userX))
-                .willReturn(WireMock.aResponse()
-                        .withStatus(200).withHeader("Content-Type", "application/json")
-                        .withBody(userXJson)));
+        stubUserMappingAndDetails(credX, userX, userXJson);
+        stubUserMappingAndDetails(credY, userY, userYJson);
 
-        WIREMOCK.stubFor(WireMock.get(WireMock.urlEqualTo("/api/users/" + userY))
-                .willReturn(WireMock.aResponse()
-                        .withStatus(200).withHeader("Content-Type", "application/json")
-                        .withBody(userYJson)));
-
-        var createdPending = mockMvc.perform(MockMvcRequestBuilders.post("/api/orders")
-                        .header(USER_HEADER, userX)
+        var createdPending = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, credX)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                   {"status":"PENDING", "items":[{"itemId": %d, "quantity":1}]}
                                 """.formatted(item.getId())))
-                .andExpect(MockMvcResultMatchers.status().isCreated())
+                .andExpect(status().isCreated())
                 .andReturn();
 
-        var createdPaid = mockMvc.perform(
-                        MockMvcRequestBuilders.post("/api/orders")
-                                .header(USER_HEADER, userY)
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                          {"status":"PAID", "items":[{"itemId": %d, "quantity":1}]}
-                                        """.formatted(item.getId())))
-                .andExpect(MockMvcResultMatchers.status().isCreated())
+        var createdPaid = mockMvc.perform(post("/api/orders")
+                        .header(USER_HEADER, credY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                  {"status":"PAID", "items":[{"itemId": %d, "quantity":1}]}
+                                """.formatted(item.getId())))
+                .andExpect(status().isCreated())
                 .andReturn();
 
         JsonPath.read(createdPending.getResponse().getContentAsString(), "$.id");
         JsonPath.read(createdPaid.getResponse().getContentAsString(), "$.id");
 
-        mockMvc.perform(MockMvcRequestBuilders.get("/api/orders/by-statuses")
+        mockMvc.perform(get("/api/orders/by-statuses")
                         .param("statuses", "PENDING", "PAID"))
-                .andExpect(MockMvcResultMatchers.status().isOk())
-                .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(MockMvcResultMatchers.jsonPath("$.length()").value(2))
-                .andExpect(MockMvcResultMatchers.jsonPath("$[*].status",
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].status",
                         org.hamcrest.Matchers.containsInAnyOrder("PENDING", "PAID")));
     }
 }
