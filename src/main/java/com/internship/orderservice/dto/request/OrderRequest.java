@@ -20,7 +20,6 @@ import java.util.List;
 @Builder
 public class OrderRequest {
 
-//    @NotNull(message = "User ID is required")
     private Long userId;
 
     @NotNull(message = "Status is required")

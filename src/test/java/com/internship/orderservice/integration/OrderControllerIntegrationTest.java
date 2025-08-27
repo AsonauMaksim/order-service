@@ -263,7 +263,6 @@ public class OrderControllerIntegrationTest extends BaseIntegrationTest {
         Number idNum = JsonPath.read(created.getResponse().getContentAsString(), "$.id");
         long orderId = idNum.longValue();
 
-        // при GET пользователь уже 404
         WIREMOCK.stubFor(WireMock.get(urlEqualTo("/api/users/" + actualUserId))
                 .willReturn(aResponse().withStatus(404)));
 

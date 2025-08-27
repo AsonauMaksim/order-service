@@ -35,13 +35,12 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
-        // В request.userId контроллер кладёт credentialsId из заголовка X-User-Id
+
         Long credentialsId = request.getUserId();
         if (credentialsId == null) {
             throw new NotFoundException("Missing user credentials id");
         }
 
-        // credentialsId -> реальный user.id (из user-service)
         Long actualUserId = resolveActualUserId(credentialsId);
         request.setUserId(actualUserId);
 
@@ -104,7 +103,6 @@ public class OrderServiceImpl implements OrderService {
         }
         Long actualUserId = resolveActualUserId(credentialsId);
 
-        // Проверка владельца
         if (!order.getUserId().equals(actualUserId)) {
             throw new AccessDeniedException("Access denied: you can update only your orders");
         }
@@ -142,15 +140,12 @@ public class OrderServiceImpl implements OrderService {
         }
         Long actualUserId = resolveActualUserId(credentialsId);
 
-        // Проверка владельца
         if (!order.getUserId().equals(actualUserId)) {
             throw new AccessDeniedException("Access denied: you can delete only your orders");
         }
 
         orderRepository.delete(order);
     }
-
-    // ----------------- helpers -----------------
 
     private static OrderStatus parseStatus(String s) {
         try {
@@ -160,7 +155,6 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    /** credentialsId (из auth-service/JWT) -> реальный user.id (из user-service). */
     private Long resolveActualUserId(Long credentialsId) {
         try {
             UserResponse user = userClient.getByCredentialsId(credentialsId);
@@ -173,7 +167,6 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    /** Жёстко требуем существование пользователя по его real user.id. */
     private UserResponse requireUser(Long userId) {
         try {
             return userClient.getByUserId(userId);
@@ -182,7 +175,6 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    /** Мягкое получение пользователя: 404 -> null, чтобы не ронять маппинг. */
     private UserResponse safeGetUser(Long userId) {
         try {
             return userClient.getByUserId(userId);

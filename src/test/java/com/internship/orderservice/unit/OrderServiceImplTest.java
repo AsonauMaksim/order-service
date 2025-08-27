@@ -380,10 +380,10 @@ class OrderServiceImplTest {
     @Test
     void updateOrder_wrongOwner_throws403() {
         Long credentialsId = 111L;
-        Long actualUserId = 5L; // НЕ владелец
+        Long actualUserId = 5L;
         Order existing = Order.builder()
                 .id(9L)
-                .userId(4L) // владелец другой
+                .userId(4L)
                 .status(OrderStatus.PENDING)
                 .build();
 
