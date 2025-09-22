@@ -13,7 +13,9 @@ import com.internship.orderservice.mapper.OrderMapper;
 import com.internship.orderservice.repository.ItemRepository;
 import com.internship.orderservice.repository.OrderRepository;
 import com.internship.orderservice.service.OrderService;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +36,15 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
 
-        UserResponse user = requireUser(request.getUserId());
+        Long credentialsId = request.getUserId();
+        if (credentialsId == null) {
+            throw new NotFoundException("Missing user credentials id");
+        }
+
+        Long actualUserId = resolveActualUserId(credentialsId);
+        request.setUserId(actualUserId);
+
+        UserResponse user = requireUser(actualUserId);
 
         Order order = orderMapper.toEntity(request);
         order.setStatus(parseStatus(request.getStatus()));
@@ -43,7 +53,8 @@ public class OrderServiceImpl implements OrderService {
         List<OrderItem> orderItems = request.getItems().stream()
                 .map(itemReq -> {
                     Item item = itemRepository.findById(itemReq.getItemId())
-                            .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemReq.getItemId()));
+                            .orElseThrow(() ->
+                                    new NotFoundException("Item not found with id: " + itemReq.getItemId()));
                     return OrderItem.builder()
                             .order(order)
                             .item(item)
@@ -83,9 +94,18 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public OrderResponse updateOrder(Long id, OrderRequest request) {
+    public OrderResponse updateOrder(Long id, OrderRequest request, Long credentialsId) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Order not found with id: " + id));
+
+        if (credentialsId == null) {
+            throw new AccessDeniedException("Missing X-User-Id");
+        }
+        Long actualUserId = resolveActualUserId(credentialsId);
+
+        if (!order.getUserId().equals(actualUserId)) {
+            throw new AccessDeniedException("Access denied: you can update only your orders");
+        }
 
         order.setStatus(parseStatus(request.getStatus()));
 
@@ -93,7 +113,8 @@ public class OrderServiceImpl implements OrderService {
         List<OrderItem> updatedItems = request.getItems().stream()
                 .map(itemReq -> {
                     Item item = itemRepository.findById(itemReq.getItemId())
-                            .orElseThrow(() -> new NotFoundException("Item not found with id: " + itemReq.getItemId()));
+                            .orElseThrow(() ->
+                                    new NotFoundException("Item not found with id: " + itemReq.getItemId()));
                     return OrderItem.builder()
                             .order(order)
                             .item(item)
@@ -110,11 +131,20 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
-    public void deleteOrder(Long id) {
-        if (!orderRepository.existsById(id)) {
-            throw new NotFoundException("Order not found with id: " + id);
+    public void deleteOrder(Long id, Long credentialsId) {
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Order not found with id: " + id));
+
+        if (credentialsId == null) {
+            throw new AccessDeniedException("Missing X-User-Id");
         }
-        orderRepository.deleteById(id);
+        Long actualUserId = resolveActualUserId(credentialsId);
+
+        if (!order.getUserId().equals(actualUserId)) {
+            throw new AccessDeniedException("Access denied: you can delete only your orders");
+        }
+
+        orderRepository.delete(order);
     }
 
     private static OrderStatus parseStatus(String s) {
@@ -125,13 +155,23 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private Long resolveActualUserId(Long credentialsId) {
+        try {
+            UserResponse user = userClient.getByCredentialsId(credentialsId);
+            if (user == null || user.getId() == null) {
+                throw new NotFoundException("User does not exist: " + credentialsId);
+            }
+            return user.getId();
+        } catch (NotFoundException | FeignException.NotFound e) {
+            throw new NotFoundException("User does not exist: " + credentialsId);
+        }
+    }
+
     private UserResponse requireUser(Long userId) {
         try {
             return userClient.getByUserId(userId);
         } catch (NotFoundException e) {
-            throw new NotFoundException(
-                    "User does not exist: " + userId
-            );
+            throw new NotFoundException("User does not exist: " + userId);
         }
     }
 
@@ -143,3 +183,4 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 }
+

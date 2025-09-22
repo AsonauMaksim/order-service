@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -80,6 +81,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleFeign(feign.FeignException ex, HttpServletRequest req) {
         HttpStatus status = (ex.status() == 404) ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
         String msg = (ex.status() == 404) ? "User not found" : "User Service error: " + ex.status();
+        return ResponseEntity.status(status).body(build(status, msg, req.getRequestURI()));
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException ex,
+                                                        HttpServletRequest req) {
+        boolean isAuthHeader = "X-User-Id".equalsIgnoreCase(ex.getHeaderName());
+        HttpStatus status = isAuthHeader ? HttpStatus.UNAUTHORIZED : HttpStatus.BAD_REQUEST;
+        String msg = "Missing required header: " + ex.getHeaderName();
         return ResponseEntity.status(status).body(build(status, msg, req.getRequestURI()));
     }
 }

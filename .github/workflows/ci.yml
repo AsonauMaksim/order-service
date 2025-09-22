@@ -5,8 +5,6 @@ on:
     branches: [ main, feature/order-service-* ]
   pull_request:
     branches: [ main ]
-env:
-  JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
 jobs:
   unit-tests:

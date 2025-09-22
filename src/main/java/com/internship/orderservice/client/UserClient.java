@@ -15,4 +15,7 @@ public interface UserClient {
 
     @GetMapping("/api/users/{id}")
     UserResponse getByUserId(@PathVariable("id") Long id);
+
+    @GetMapping("/api/users/by-credentials-id/{credentialsId}")
+    UserResponse getByCredentialsId(@PathVariable("credentialsId") Long credentialsId);
 }
