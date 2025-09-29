@@ -11,18 +11,18 @@ import java.util.List;
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
     @Query("""
-        select distinct o from Order o
-        left join fetch o.orderItems oi
-        left join fetch oi.item
-        where o.id in :ids
-    """)
+                select distinct o from Order o
+                left join fetch o.orderItems oi
+                left join fetch oi.item
+                where o.id in :ids
+            """)
     List<Order> findByIdIn(@Param("ids") List<Long> ids);
 
     @Query("""
-        select distinct o from Order o
-        left join fetch o.orderItems oi
-        left join fetch oi.item
-        where o.status in :statuses
-    """)
+                select distinct o from Order o
+                left join fetch o.orderItems oi
+                left join fetch oi.item
+                where o.status in :statuses
+            """)
     List<Order> findByStatusIn(@Param("statuses") List<OrderStatus> statuses);
 }

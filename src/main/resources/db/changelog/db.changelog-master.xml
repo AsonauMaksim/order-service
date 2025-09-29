@@ -7,4 +7,5 @@
 
     <include file="db/changelog/create-tables.xml"/>
     <include file="db/changelog/fill-items-table.xml"/>
+    <include file="db/changelog/0004-add-payment-id.xml"/>
 </databaseChangeLog>

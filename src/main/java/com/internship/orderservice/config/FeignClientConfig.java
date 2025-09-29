@@ -7,6 +7,7 @@ import feign.codec.ErrorDecoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -16,8 +17,8 @@ public class FeignClientConfig {
     @Bean
     public RequestInterceptor authForwardingInterceptor() {
         return template -> {
-            var attrs = RequestContextHolder.getRequestAttributes();
-            if (attrs instanceof ServletRequestAttributes sra) {
+            RequestAttributes requestAttributes = RequestContextHolder.getRequestAttributes();
+            if (requestAttributes instanceof ServletRequestAttributes sra) {
                 String userId = sra.getRequest().getHeader("X-User-Id");
                 if (userId != null && !userId.isBlank()) {
                     template.header("X-User-Id", userId);

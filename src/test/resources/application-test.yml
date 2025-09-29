@@ -14,6 +14,14 @@ spring:
   liquibase:
     enabled: true
 
+  kafka:
+    listener:
+      auto-startup: false
+
+app:
+  kafka:
+    enabled: false
+
 external:
   user-service:
     url: http://localhost:0

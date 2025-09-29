@@ -23,4 +23,6 @@ public class OrderResponse {
     private List<OrderItemResponse> items;
 
     private UserInfoResponse user;
+
+    private String paymentId;
 }
