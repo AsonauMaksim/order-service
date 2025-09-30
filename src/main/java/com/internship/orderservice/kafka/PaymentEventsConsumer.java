@@ -34,7 +34,6 @@ public class PaymentEventsConsumer {
             return;
         }
 
-        // простая идемпотентность
         if (event.getPaymentId() != null && event.getPaymentId().equals(order.getPaymentId())) {
             log.info("Payment already applied for order {} (paymentId={})", order.getId(), event.getPaymentId());
             return;
