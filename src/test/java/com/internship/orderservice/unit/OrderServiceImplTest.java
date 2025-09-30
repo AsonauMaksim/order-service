@@ -10,6 +10,7 @@ import com.internship.orderservice.entity.Order;
 import com.internship.orderservice.entity.OrderItem;
 import com.internship.orderservice.entity.OrderStatus;
 import com.internship.orderservice.exception.NotFoundException;
+import com.internship.orderservice.kafka.OrderEventsProducer;
 import com.internship.orderservice.mapper.OrderMapper;
 import com.internship.orderservice.repository.ItemRepository;
 import com.internship.orderservice.repository.OrderRepository;
@@ -46,6 +47,8 @@ class OrderServiceImplTest {
     private ItemRepository itemRepository;
     @Mock
     private UserClient userClient;
+    @Mock
+    private OrderEventsProducer orderEventsProducer;
 
     @InjectMocks
     private OrderServiceImpl service;
@@ -61,13 +64,11 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_happyPath() {
-
         Long credentialsId = 111L;
         Long actualUserId = 4L;
 
         OrderRequest req = OrderRequest.builder()
                 .userId(credentialsId)
-                .status("PENDING")
                 .items(List.of(
                         OrderItemRequest.builder().itemId(1L).quantity(2).build(),
                         OrderItemRequest.builder().itemId(2L).quantity(1).build()
@@ -95,6 +96,8 @@ class OrderServiceImplTest {
         });
         when(orderMapper.toDto(any(Order.class), eq(resolvedUser))).thenReturn(new OrderResponse());
 
+        doNothing().when(orderEventsProducer).send(any());
+
         OrderResponse resp = service.createOrder(req);
 
         assertThat(resp).isNotNull();
@@ -111,6 +114,8 @@ class OrderServiceImplTest {
         verify(orderMapper).toDto(saved, resolvedUser);
         verify(userClient).getByCredentialsId(credentialsId);
         verify(userClient).getByUserId(actualUserId);
+
+        verify(orderEventsProducer).send(any());
     }
 
     @Test
@@ -119,7 +124,6 @@ class OrderServiceImplTest {
 
         OrderRequest req = OrderRequest.builder()
                 .userId(credentialsId)
-                .status("PENDING")
                 .items(List.of(OrderItemRequest.builder().itemId(1L).quantity(1).build()))
                 .build();
 
@@ -141,7 +145,6 @@ class OrderServiceImplTest {
 
         OrderRequest req = OrderRequest.builder()
                 .userId(credentialsId)
-                .status("PENDING")
                 .items(List.of(OrderItemRequest.builder().itemId(999L).quantity(1).build()))
                 .build();
 
@@ -161,7 +164,7 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void createOrder_invalidStatus_throwsIAE() {
+    void createOrder_ignoresClientStatus_setsPending() {
         Long credentialsId = 111L;
         Long actualUserId = 4L;
 
@@ -178,10 +181,25 @@ class OrderServiceImplTest {
         when(userClient.getByUserId(actualUserId)).thenReturn(resolvedUser);
         when(orderMapper.toEntity(req)).thenReturn(new Order());
 
-        assertThatThrownBy(() -> service.createOrder(req))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid status");
+        when(itemRepository.findById(1L)).thenReturn(Optional.of(item1));
+
+        when(orderRepository.save(any(Order.class))).thenAnswer(inv -> {
+            Order o = inv.getArgument(0);
+            o.setId(100L);
+            return o;
+        });
+        when(orderMapper.toDto(any(Order.class), eq(resolvedUser))).thenReturn(new OrderResponse());
+
+        doNothing().when(orderEventsProducer).send(any());
+
+        OrderResponse resp = service.createOrder(req);
+        assertThat(resp).isNotNull();
+
+        ArgumentCaptor<Order> savedCaptor = ArgumentCaptor.forClass(Order.class);
+        verify(orderRepository).save(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().getStatus()).isEqualTo(OrderStatus.PENDING);
     }
+
 
     @Test
     void getOrderById_userWasRemoved_mapperGetsNullUser() {
@@ -352,7 +370,7 @@ class OrderServiceImplTest {
         )));
 
         OrderRequest req = OrderRequest.builder()
-                .status("PAID")
+                .status("PROCESSING") // было "PAID"
                 .items(List.of(OrderItemRequest.builder().itemId(2L).quantity(3).build()))
                 .build();
 
@@ -371,11 +389,12 @@ class OrderServiceImplTest {
         verify(orderRepository).save(savedCaptor.capture());
         Order saved = savedCaptor.getValue();
 
-        assertThat(saved.getStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(saved.getStatus()).isEqualTo(OrderStatus.PROCESSING);
         assertThat(saved.getOrderItems()).hasSize(1);
         assertThat(saved.getOrderItems().getFirst().getItem().getId()).isEqualTo(2L);
         assertThat(saved.getOrderItems().getFirst().getQuantity()).isEqualTo(3);
     }
+
 
     @Test
     void updateOrder_wrongOwner_throws403() {

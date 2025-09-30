@@ -16,12 +16,17 @@ spring:
       hibernate:
         format_sql: true
 
-  cache:
-    type: redis
-
   liquibase:
     enabled: true
     change-log: classpath:db/changelog/db.changelog-master.xml
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:kafka:9092}
+    consumer:
+      group-id: ${app.kafka.consumer-group}
+      auto-offset-reset: earliest
+    producer:
+      retries: 3
 
 server:
   port: 8083
@@ -30,6 +35,16 @@ external:
   user-service:
     url: http://user-service:8081
 
+app:
+  kafka:
+    orders-topic: orders
+    payments-topic: payments
+    consumer-group: order-service-payments
+
 logging:
   level:
-    root: DEBUG
+    root: INFO
+    com.internship.orderservice: INFO
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN
+    org.hibernate: WARN

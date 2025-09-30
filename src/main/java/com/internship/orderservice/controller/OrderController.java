@@ -4,7 +4,8 @@ import com.internship.orderservice.dto.request.OrderRequest;
 import com.internship.orderservice.dto.response.OrderResponse;
 import com.internship.orderservice.entity.OrderStatus;
 import com.internship.orderservice.service.OrderService;
-import jakarta.validation.Valid;
+import com.internship.orderservice.validation.Create;
+import com.internship.orderservice.validation.Update;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -37,7 +38,8 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
             @RequestHeader("X-User-Id") Long credentialsId,
-            @RequestBody @Valid OrderRequest request) {
+            @RequestBody @Validated(Create.class) OrderRequest request
+    ) {
 
         request.setUserId(credentialsId);
         OrderResponse resp = orderService.createOrder(request);
@@ -73,7 +75,9 @@ public class OrderController {
     public ResponseEntity<OrderResponse> updateOrder(
             @RequestHeader("X-User-Id") Long credentialsId,
             @PathVariable Long id,
-            @RequestBody @Valid OrderRequest request) {
+//            @RequestBody @Valid OrderRequest request
+            @RequestBody @Validated(Update.class) OrderRequest request
+    ) {
 
         OrderResponse response = orderService.updateOrder(id, request, credentialsId);
         return ResponseEntity.ok(response);

@@ -21,6 +21,7 @@ public interface OrderMapper {
     @Mapping(target = "orderItems",     ignore = true)
     Order toEntity(OrderRequest request);
 
+    @Mapping(source = "paymentId", target = "paymentId")
     @Mapping(source = "orderItems", target = "items")
     OrderResponse toDto(Order order);
 
@@ -30,5 +31,6 @@ public interface OrderMapper {
     @Mapping(source = "order.creationDate", target = "creationDate")
     @Mapping(source = "order.orderItems",   target = "items")
     @Mapping(source = "user",               target = "user")
+    @Mapping(source = "order.paymentId",    target = "paymentId")
     OrderResponse toDto(Order order, UserResponse user);
 }

@@ -2,7 +2,7 @@ name: Order Service CI Pipeline
 
 on:
   push:
-    branches: [ main, feature/order-service-* ]
+    branches: [ main, feature/order-service-*, feature/add-kafka ]
   pull_request:
     branches: [ main ]
 

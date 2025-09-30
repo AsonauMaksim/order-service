@@ -45,6 +45,9 @@ public class Order {
     @Column(name = "creation_date", nullable = false)
     private LocalDateTime creationDate;
 
+    @Column(name = "payment_id")
+    private String paymentId;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<OrderItem> orderItems = new ArrayList<>();

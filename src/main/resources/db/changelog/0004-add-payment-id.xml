@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+          http://www.liquibase.org/xml/ns/dbchangelog
+          https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.4.xsd">
+
+    <changeSet id="004-add-payment-id" author="maksim-asonau">
+        <addColumn tableName="orders">
+            <column name="payment_id" type="VARCHAR(64)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <!-- rollback -->
+        <rollback>
+            <dropColumn tableName="orders" columnName="payment_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

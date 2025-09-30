@@ -42,7 +42,6 @@ public class GlobalExceptionHandler {
                 .body(build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI()));
     }
 
-    /** fallback — 500 INTERNAL_SERVER_ERROR */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleOther(Exception ex, HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
