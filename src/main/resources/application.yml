@@ -41,6 +41,16 @@ app:
     payments-topic: payments
     consumer-group: order-service-payments
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 logging:
   level:
     root: INFO
